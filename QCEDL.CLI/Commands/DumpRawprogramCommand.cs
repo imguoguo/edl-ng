@@ -25,20 +25,27 @@ internal sealed class DumpRawprogramCommand
         description: "Only generate rawprogram and patch XML files, do not dump partitions.",
         getDefaultValue: () => false);
 
+    private static readonly Option<string[]> SkipOption = new(
+        aliases: ["--skip"],
+        description: "Skip dumping specified partitions (comma-separated). These partitions will still be included in the rawprogram XML.",
+        getDefaultValue: () => []);
+
     public static Command Create(GlobalOptionsBinder globalOptionsBinder)
     {
         var command = new Command("dump-rawprogram", "Reads all partitions to individual files from a certain LUN and generates rawprogram XML file.")
         {
             DumpSaveDirArgument,
             LunOption,
-            GenXmlOnlyOption
+            GenXmlOnlyOption,
+            SkipOption
         };
 
         command.SetHandler(ExecuteAsync,
             globalOptionsBinder,
             DumpSaveDirArgument,
             LunOption,
-            GenXmlOnlyOption);
+            GenXmlOnlyOption,
+            SkipOption);
 
         return command;
     }
@@ -47,10 +54,18 @@ internal sealed class DumpRawprogramCommand
         GlobalOptionsBinder globalOptions,
         DirectoryInfo dumpSaveDir,
         uint lun,
-        bool genXmlOnly)
+        bool genXmlOnly,
+        string[] skipPartitions)
     {
-        Logging.Log($"Executing 'dump-rawprogram' command: LUN {lun}, Save Directory '{dumpSaveDir.FullName}', GenXmlOnly={genXmlOnly}...", LogLevel.Trace);
+        Logging.Log($"Executing 'dump-rawprogram' command: LUN {lun}, Save Directory '{dumpSaveDir.FullName}', GenXmlOnly={genXmlOnly}, SkipPartitions=[{string.Join(",", skipPartitions)}]...", LogLevel.Trace);
         var commandStopwatch = Stopwatch.StartNew();
+
+        // Parse skip partitions into a set for efficient lookup
+        var skipPartitionSet = new HashSet<string>(skipPartitions.SelectMany(p => p.Split(',')).Select(p => p.Trim()).Where(p => !string.IsNullOrEmpty(p)), StringComparer.OrdinalIgnoreCase);
+        if (skipPartitionSet.Count > 0)
+        {
+            Logging.Log($"Will skip dumping partitions: {string.Join(", ", skipPartitionSet)}", LogLevel.Info);
+        }
 
         try
         {
@@ -343,6 +358,13 @@ internal sealed class DumpRawprogramCommand
                 if (string.IsNullOrWhiteSpace(partitionName))
                 {
                     Logging.Log("Skipping partition with empty name.", LogLevel.Debug);
+                    continue;
+                }
+
+                // Check if this partition should be skipped
+                if (skipPartitionSet.Contains(partitionName))
+                {
+                    Logging.Log($"Skipping partition '{partitionName}' as requested by --skip parameter.", LogLevel.Info);
                     continue;
                 }
 
