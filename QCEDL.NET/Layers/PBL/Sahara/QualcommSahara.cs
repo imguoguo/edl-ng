@@ -212,44 +212,6 @@ public class QualcommSahara(QualcommSerial serial)
         return result;
     }
 
-    public bool Handshake()
-    {
-        var result = true;
-
-        try
-        {
-            var hello = serial.GetResponse([0x01, 0x00, 0x00, 0x00]);
-
-            // Incoming Hello packet:
-            // 00000001 = Hello command id
-            // xxxxxxxx = Length
-            // xxxxxxxx = Protocol version
-            // xxxxxxxx = Supported version
-            // xxxxxxxx = Max packet length
-            // xxxxxxxx = Expected mode
-            // 6 dwords reserved space
-            LibraryLogger.Debug("Protocol: 0x" + ByteOperations.ReadUInt32(hello, 0x08).ToStringInvariantCulture("X8"));
-            LibraryLogger.Debug("Supported: 0x" + ByteOperations.ReadUInt32(hello, 0x0C).ToStringInvariantCulture("X8"));
-            LibraryLogger.Debug("MaxLength: 0x" + ByteOperations.ReadUInt32(hello, 0x10).ToStringInvariantCulture("X8"));
-            LibraryLogger.Debug("Mode: 0x" + ByteOperations.ReadUInt32(hello, 0x14).ToStringInvariantCulture("X8"));
-
-            var helloResponse = BuildHelloResponsePacket(QualcommSaharaMode.ImageTxPending);
-
-            var ready = serial.SendCommand(helloResponse, [0x03, 0x00, 0x00, 0x00]);
-        }
-        catch (Exception ex)
-        {
-            LibraryLogger.Error("An unexpected error happened");
-            LibraryLogger.Error(ex.GetType().ToString());
-            LibraryLogger.Error(ex.Message);
-            LibraryLogger.Error(ex.StackTrace);
-
-            result = false;
-        }
-
-        return result;
-    }
-
     public bool CommandHandshake(byte[]? preReadHelloPacket = null)
     {
         var result = true;
