@@ -110,14 +110,24 @@ internal sealed class EdlManager(GlobalOptionsBinder globalOptions) : IDisposabl
                 // Check for Sahara HELLO (starts with 0x01 0x00 0x00 0x00)
                 if (initialReadBuffer.Length >= 4 && initialReadBuffer[0] == 0x01 && initialReadBuffer[1] == 0x00 && initialReadBuffer[2] == 0x00 && initialReadBuffer[3] == 0x00)
                 {
-                    Logging.Log("Passive read matches Sahara HELLO pattern. Detected Mode: Sahara", LogLevel.Debug);
-                    detectedMode = DeviceMode.Sahara;
+                    var saharaMode = (QualcommSaharaMode)ByteOperations.ReadUInt32(initialReadBuffer, 0x14); // 0x14 is the offset for Mode in HELLO packet
+                    if (saharaMode == QualcommSaharaMode.MemoryDebug)
+                    {
+                        Logging.Log("Passive read indicates Sahara MemoryDebug (crashdump) mode.", LogLevel.Debug);
+                        detectedMode = DeviceMode.SaharaMemoryDebug;
+                    }
+                    else
+                    {
+                        Logging.Log($"Passive read matches Sahara HELLO pattern (Mode: {saharaMode}). Detected Mode: Sahara", LogLevel.Debug);
+                        detectedMode = DeviceMode.Sahara;
+                    }
+
                     _initialSaharaHelloPacket = initialReadBuffer;
 
                     _serialPort = probeSerial; // Keep the probeSerial as the main _serialPort
                     probeSerial = null; // Nullify probeSerial so it's not disposed in finally if kept
                     _saharaClient = new(_serialPort);
-                    CurrentMode = DeviceMode.Sahara;
+                    CurrentMode = detectedMode;
 
                 }
                 // Check for Firehose XML start
@@ -587,6 +597,8 @@ internal sealed class EdlManager(GlobalOptionsBinder globalOptions) : IDisposabl
 
                 CurrentMode = DeviceMode.Firehose;
                 break;
+            case DeviceMode.SaharaMemoryDebug:
+                throw new InvalidOperationException("Device is in Sahara MemoryDebug (crashdump) mode. Firehose operations are not available. A different command is needed to handle this state.");
             case DeviceMode.Unknown:
             case DeviceMode.Error:
             default:

@@ -39,6 +39,10 @@ internal sealed class UploadLoaderCommand
                     await manager.UploadLoaderViaSaharaAsync();
                     Logging.Log("Loader upload process completed. Device should restart or re-enumerate.", LogLevel.Debug);
                     break;
+                case DeviceMode.SaharaMemoryDebug:
+                    Logging.Log("Error: Device is in Sahara MemoryDebug (crashdump) mode. Cannot upload a Firehose loader.", LogLevel.Error);
+                    Logging.Log("Use a different command to handle memory dumps.", LogLevel.Error);
+                    return 1;
                 case DeviceMode.Firehose:
                     Logging.Log("Error: Device is already in Firehose mode. Cannot upload loader.", LogLevel.Error);
                     return 1;

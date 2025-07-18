@@ -4,6 +4,7 @@ internal enum DeviceMode
 {
     Unknown,
     Sahara,
+    SaharaMemoryDebug,
     Firehose,
     Error
 }
