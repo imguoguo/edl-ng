@@ -26,6 +26,10 @@ internal sealed class EdlManager(GlobalOptionsBinder globalOptions) : IDisposabl
     private static readonly Guid ComPortGuid = new("{86E0D1E0-8089-11D0-9CE4-08003E301F73}");
     private static readonly Guid WinUsbGuid = new("{a5dcbf10-6530-11d2-901f-00c04fb951ed}");
 
+    // Default USB device IDs
+    private static readonly int DefaultVid = 0x05C6;
+    private static readonly int[] DefaultPids = [0x9008, 0x900E];
+
     private byte[]? _initialSaharaHelloPacket;
 
     public DeviceMode CurrentMode { get; private set; }
@@ -292,29 +296,36 @@ internal sealed class EdlManager(GlobalOptionsBinder globalOptions) : IDisposabl
             Logging.Log("LibUsbDotNet context not initialized. Cannot use LibUsb backend.", LogLevel.Warning);
             return false;
         }
-        var vidToFind = globalOptions.Vid ?? 0x05C6;
-        var pidToFind = globalOptions.Pid ?? 0x9008;
+
+        var vidToFind = globalOptions.Vid ?? DefaultVid;
+        var pidsToFind = globalOptions.Pid.HasValue ? [globalOptions.Pid.Value] : DefaultPids;
+
         // string serialToFind = _globalOptions.SerialNumber; // If you add a serial number option
         try
         {
-            var finder = new UsbDeviceFinder
+            foreach (var pidToFind in pidsToFind)
             {
-                Vid = vidToFind,
-                Pid = pidToFind
-            };
-            // if (!string.IsNullOrEmpty(serialToFind)) finder.SerialNumber = serialToFind;
+                var finder = new UsbDeviceFinder
+                {
+                    Vid = vidToFind,
+                    Pid = pidToFind
+                };
+                // if (!string.IsNullOrEmpty(serialToFind)) finder.SerialNumber = serialToFind;
 
-            var usbDevice = QualcommSerial.LibUsbContext.Find(finder);
-            if (usbDevice != null)
-            {
-                // _libUsbSerialNumber = serialToFind; // If used
-                _devicePath = $"usb:vid_{vidToFind:X4},pid_{pidToFind:X4}";
-                _deviceGuid = WinUsbGuid; // Use WinUSBGuid to signify LibUsbDotNet backend to QualcommSerial
-                Logging.Log($"LibUsbDotNet found device: VID={vidToFind:X4}, PID={pidToFind:X4}. Path set to: {_devicePath}", LogLevel.Debug);
-                return true;
+                var usbDevice = QualcommSerial.LibUsbContext.Find(finder);
+                if (usbDevice != null)
+                {
+                    // _libUsbSerialNumber = serialToFind; // If used
+                    _devicePath = $"usb:vid_{vidToFind:X4},pid_{pidToFind:X4}";
+                    _deviceGuid = WinUsbGuid; // Use WinUSBGuid to signify LibUsbDotNet backend to QualcommSerial
+                    Logging.Log($"LibUsbDotNet found device: VID={vidToFind:X4}, PID={pidToFind:X4}. Path set to: {_devicePath}", LogLevel.Debug);
+                    return true;
+                }
+
+                Logging.Log($"LibUsbDotNet: No device found with VID={vidToFind:X4}, PID={pidToFind:X4}.", LogLevel.Debug);
             }
 
-            Logging.Log($"LibUsbDotNet: No device found with VID={vidToFind:X4}, PID={pidToFind:X4}.", LogLevel.Debug);
+            Logging.Log($"LibUsbDotNet: No device found with VID={vidToFind:X4} and any of the PIDs: {string.Join(", ", pidsToFind.Select(p => $"0x{p:X4}"))}.", LogLevel.Debug);
             return false;
         }
         catch (Exception ex)
@@ -328,9 +339,10 @@ internal sealed class EdlManager(GlobalOptionsBinder globalOptions) : IDisposabl
     private bool FindDeviceLinuxSerial()
     {
         Logging.Log("Searching for Qualcomm EDL device on Linux (/dev/ttyUSB* or /dev/ttyACM*)...");
-        var targetVid = (globalOptions.Vid ?? 0x05C6).ToString("x4");
-        var targetPid = (globalOptions.Pid ?? 0x9008).ToString("x4");
-        Logging.Log($"Target VID: {targetVid}, PID: {targetPid}", LogLevel.Debug);
+        var targetVid = (globalOptions.Vid ?? DefaultVid).ToString("x4");
+        var targetPids = globalOptions.Pid.HasValue ? [globalOptions.Pid.Value.ToString("x4")] : DefaultPids.Select(p => p.ToString("x4")).ToArray();
+
+        Logging.Log($"Target VID: {targetVid}, PIDs: {string.Join(", ", targetPids)}", LogLevel.Debug);
         var potentialTtyPaths = new List<string>();
         try
         {
@@ -386,17 +398,17 @@ internal sealed class EdlManager(GlobalOptionsBinder globalOptions) : IDisposabl
                     if (File.Exists(vidPath) && File.Exists(pidPath))
                     {
                         var vid = File.ReadAllText(vidPath).Trim();
-
                         var pid = File.ReadAllText(pidPath).Trim();
                         Logging.Log($"Found TTY: {ttyName}, VID: {vid}, PID: {pid}", LogLevel.Trace);
+
                         if (vid.Equals(targetVid, StringComparison.OrdinalIgnoreCase) &&
-                            pid.Equals(targetPid, StringComparison.OrdinalIgnoreCase))
+                            targetPids.Any(targetPid => pid.Equals(targetPid, StringComparison.OrdinalIgnoreCase)))
                         {
                             var devPath = Path.Combine("/dev", ttyName);
                             if (File.Exists(devPath)) // Check if /dev/ttyUSBx actually exists
                             {
                                 potentialTtyPaths.Add(devPath);
-                                Logging.Log($"Match: {devPath} for VID/PID {targetVid}/{targetPid}", LogLevel.Debug);
+                                Logging.Log($"Match: {devPath} for VID/PID {targetVid}/{pid}", LogLevel.Debug);
                             }
                         }
                     }
@@ -504,7 +516,7 @@ internal sealed class EdlManager(GlobalOptionsBinder globalOptions) : IDisposabl
             finalBusName == "QHSUSB_DLOAD" ||
             finalBusName == "QHSUSB__BULK")
         {
-            Logging.Log("  Mode detected: Sahara/Firehose (9008)");
+            Logging.Log("  Mode detected: Sahara/Firehose");
         }
         else if (finalBusName == "QHSUSB_ARMPRG")
         {
@@ -521,17 +533,11 @@ internal sealed class EdlManager(GlobalOptionsBinder globalOptions) : IDisposabl
 
     private bool IsQualcommEdlDevice(string devicePath, string _)
     {
-        var isQualcomm = devicePath.Contains("VID_05C6&", StringComparison.OrdinalIgnoreCase);
-        if (globalOptions.Vid.HasValue && isQualcomm)
-        {
-            isQualcomm = devicePath.Contains($"VID_{globalOptions.Vid.Value:X4}&", StringComparison.OrdinalIgnoreCase);
-        }
+        var targetVid = globalOptions.Vid ?? DefaultVid;
+        var targetPids = globalOptions.Pid.HasValue ? [globalOptions.Pid.Value] : DefaultPids;
 
-        var isEdl = devicePath.Contains("&PID_9008", StringComparison.OrdinalIgnoreCase);
-        if (globalOptions.Pid.HasValue && isEdl)
-        {
-            isEdl = devicePath.Contains($"&PID_{globalOptions.Pid.Value:X4}", StringComparison.OrdinalIgnoreCase);
-        }
+        var isQualcomm = devicePath.Contains($"VID_{targetVid:X4}&", StringComparison.OrdinalIgnoreCase);
+        var isEdl = targetPids.Any(pid => devicePath.Contains($"&PID_{pid:X4}", StringComparison.OrdinalIgnoreCase));
 
         return isQualcomm && isEdl;
     }

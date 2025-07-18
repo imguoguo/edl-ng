@@ -50,7 +50,7 @@ var pidOption = new Option<int?>(
             return pid;
         }
 
-        result.ErrorMessage = $"Invalid PID format: {pidStr}. Use hex (e.g., 0x9008).";
+        result.ErrorMessage = $"Invalid PID format: {pidStr}. Use hex (e.g., 0x9008 or 0x900E).";
         return null;
     });
 
