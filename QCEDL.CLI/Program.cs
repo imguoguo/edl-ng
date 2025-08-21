@@ -82,6 +82,12 @@ slotOption.AddValidator(result =>
     }
 });
 
+var hostDevAsTargetOption = new Option<string?>(
+    name: "--hostdev-as-target",
+    description: "Treat the specified host device path as the target for operations (e.g., /dev/mtd0). " +
+                 "This bypasses USB Firehose and writes directly to the host device. " +
+                 "Currently only supports SPI NOR flash devices with 4K block size.");
+
 // --- Create Global Options Binder ---
 var globalOptionsBinder = new GlobalOptionsBinder(
     loaderOption,
@@ -90,7 +96,8 @@ var globalOptionsBinder = new GlobalOptionsBinder(
     memoryOption,
     logLevelOption,
     maxPayloadOption,
-    slotOption
+    slotOption,
+    hostDevAsTargetOption
 );
 
 // --- Define Root Command ---
@@ -103,6 +110,7 @@ rootCommand.AddGlobalOption(memoryOption);
 rootCommand.AddGlobalOption(logLevelOption);
 rootCommand.AddGlobalOption(maxPayloadOption);
 rootCommand.AddGlobalOption(slotOption);
+rootCommand.AddGlobalOption(hostDevAsTargetOption);
 
 // --- Define Commands (Add more commands here later) ---
 rootCommand.AddCommand(UploadLoaderCommand.Create(globalOptionsBinder));

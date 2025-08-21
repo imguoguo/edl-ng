@@ -2,10 +2,12 @@ using System.Runtime.InteropServices;
 using System.Text;
 using LibUsbDotNet.Main;
 using QCEDL.CLI.Helpers;
+using QCEDL.NET.PartitionTable;
 using QCEDL.NET.Todo;
 using QCEDL.NET.USB;
 using Qualcomm.EmergencyDownload.ChipInfo;
 using Qualcomm.EmergencyDownload.Layers.APSS.Firehose;
+using Qualcomm.EmergencyDownload.Layers.APSS.Firehose.JSON.StorageInfo;
 using Qualcomm.EmergencyDownload.Layers.APSS.Firehose.Xml;
 using Qualcomm.EmergencyDownload.Layers.APSS.Firehose.Xml.Elements;
 using Qualcomm.EmergencyDownload.Layers.PBL.Sahara;
@@ -36,6 +38,62 @@ internal sealed class EdlManager(GlobalOptionsBinder globalOptions) : IDisposabl
 
     public QualcommFirehose Firehose => _firehoseClient ?? throw new InvalidOperationException("Not connected in Firehose mode.");
     public bool IsFirehoseMode => _firehoseClient != null;
+
+    public bool IsHostDeviceMode => !string.IsNullOrEmpty(globalOptions.HostDevAsTarget);
+    private HostDeviceManager? _hostDeviceManager;
+
+    public HostDeviceManager GetHostDeviceManager()
+    {
+        if (!IsHostDeviceMode)
+        {
+            throw new InvalidOperationException("Not in host device mode. Use --hostdev-as-target to enable this mode.");
+        }
+
+        _hostDeviceManager ??= new HostDeviceManager(globalOptions.HostDevAsTarget!);
+
+        return _hostDeviceManager;
+    }
+
+    public async Task ApplyPatchAsync(string startSectorStr, uint byteOffset, uint sizeInBytes, string valueStr, string filename)
+    {
+        if (IsHostDeviceMode)
+        {
+            // Only process patches with filename="DISK" in host device mode
+            if (!string.Equals(filename, "DISK", StringComparison.OrdinalIgnoreCase))
+            {
+                Logging.Log($"Skipping patch with filename='{filename}' (only 'DISK' patches are processed in host device mode)", LogLevel.Debug);
+                return;
+            }
+
+            var hostManager = GetHostDeviceManager();
+            await Task.Run(() => hostManager.ApplyPatch(startSectorStr, byteOffset, sizeInBytes, valueStr));
+        }
+        else
+        {
+            // In Firehose mode, patches are sent to the device as XML
+            await EnsureFirehoseModeAsync();
+
+            var patchXml = $"""
+            <?xml version="1.0" ?>
+            <data>
+                <patch start_sector="{startSectorStr}" 
+                       byte_offset="{byteOffset}" 
+                       size_in_bytes="{sizeInBytes}" 
+                       value="{valueStr}" 
+                       filename="{filename}" 
+                       SECTOR_SIZE_IN_BYTES="{GetSectorSize()}" 
+                       physical_partition_number="{globalOptions.Slot}" />
+            </data>
+            """;
+
+            var success = await Task.Run(() => Firehose.SendRawXmlAndGetResponse(patchXml));
+            if (!success)
+            {
+                throw new InvalidOperationException($"Patch operation failed for sector {startSectorStr}");
+            }
+        }
+    }
+
 
     /// <summary>
     /// Attempts to detect the current operating mode of the connected EDL device.
@@ -541,6 +599,186 @@ internal sealed class EdlManager(GlobalOptionsBinder globalOptions) : IDisposabl
         return true;
     }
 
+    public async Task<GptPartition?> FindPartitionAsync(string partitionName, uint? specifiedLun = null)
+    {
+        if (IsHostDeviceMode)
+        {
+            if (specifiedLun.HasValue && specifiedLun.Value != 0)
+            {
+                Logging.Log("Warning: LUN parameter is ignored in host device mode.", LogLevel.Warning);
+            }
+
+            var hostManager = GetHostDeviceManager();
+            return await Task.Run(() => hostManager.FindPartition(partitionName));
+        }
+        else
+        {
+            await EnsureFirehoseModeAsync();
+            await ConfigureFirehoseAsync();
+
+            var storageType = globalOptions.MemoryType ?? StorageType.Ufs;
+
+            List<uint> lunsToScan = [];
+            if (specifiedLun.HasValue)
+            {
+                lunsToScan.Add(specifiedLun.Value);
+                Logging.Log($"Scanning specified LUN: {specifiedLun.Value}", LogLevel.Debug);
+            }
+            else
+            {
+                Logging.Log("No LUN specified, attempting to determine number of LUNs and scan all.", LogLevel.Debug);
+                Root? devInfo = null;
+                try
+                {
+                    devInfo = await Task.Run(() => Firehose.GetStorageInfo(storageType, 0, globalOptions.Slot));
+                }
+                catch (Exception ex)
+                {
+                    Logging.Log($"Could not get device info to determine LUN count from LUN 0. Error: {ex.Message}. Will try a default range.", LogLevel.Warning);
+                }
+
+                if (devInfo?.StorageInfo?.NumPhysical > 0)
+                {
+                    for (uint i = 0; i < devInfo.StorageInfo.NumPhysical; i++)
+                    {
+                        lunsToScan.Add(i);
+                    }
+                    Logging.Log($"Device reports {devInfo.StorageInfo.NumPhysical} LUN(s). Scanning LUNs: {string.Join(", ", lunsToScan)}", LogLevel.Debug);
+                }
+                else
+                {
+                    if (storageType == StorageType.Spinor)
+                    {
+                        lunsToScan.Add(0);
+                    }
+                    else
+                    {
+                        lunsToScan.AddRange([0, 1, 2, 3, 4, 5]);
+                        Logging.Log($"Could not determine LUN count. Scanning default LUNs: {string.Join(", ", lunsToScan)}", LogLevel.Warning);
+                    }
+                }
+            }
+
+            foreach (var currentLun in lunsToScan)
+            {
+                Logging.Log($"Scanning LUN {currentLun} for partition '{partitionName}'...", LogLevel.Debug);
+
+                try
+                {
+                    var gptData = await ReadSectorsAsync(currentLun, 0, 64); // Read 64 sectors for GPT
+                    using var stream = new MemoryStream(gptData);
+
+                    var gpt = Gpt.ReadFromStream(stream, (int)GetSectorSize(currentLun));
+                    if (gpt != null)
+                    {
+                        foreach (var p in gpt.Partitions)
+                        {
+                            var currentPartitionName = p.GetName().TrimEnd('\0');
+                            if (currentPartitionName.Equals(partitionName, StringComparison.OrdinalIgnoreCase))
+                            {
+                                Logging.Log($"Found partition '{partitionName}' on LUN {currentLun}");
+                                return p; // Return the partition, caller will need to track which LUN it came from
+                            }
+                        }
+                    }
+                }
+                catch (InvalidDataException)
+                {
+                    Logging.Log($"No valid GPT found on LUN {currentLun}.", LogLevel.Debug);
+                }
+                catch (Exception ex)
+                {
+                    Logging.Log($"Error scanning LUN {currentLun}: {ex.Message}", LogLevel.Warning);
+                }
+            }
+
+            return null; // Partition not found
+        }
+    }
+
+    // Helper method to find partition and return both partition info and LUN
+    public async Task<(GptPartition partition, uint lun)?> FindPartitionWithLunAsync(string partitionName, uint? specifiedLun = null)
+    {
+        if (IsHostDeviceMode)
+        {
+            var partition = await FindPartitionAsync(partitionName, specifiedLun);
+            return partition.HasValue ? (partition.Value, 0u) : null;
+        }
+        else
+        {
+            await EnsureFirehoseModeAsync();
+            await ConfigureFirehoseAsync();
+
+            var storageType = globalOptions.MemoryType ?? StorageType.Ufs;
+
+            List<uint> lunsToScan = [];
+            if (specifiedLun.HasValue)
+            {
+                lunsToScan.Add(specifiedLun.Value);
+            }
+            else
+            {
+                // Same LUN discovery logic as above
+                Root? devInfo = null;
+                try
+                {
+                    devInfo = await Task.Run(() => Firehose.GetStorageInfo(storageType, 0, globalOptions.Slot));
+                }
+                catch (Exception ex)
+                {
+                    Logging.Log($"Could not get device info to determine LUN count from LUN 0. Error: {ex.Message}. Will try a default range.", LogLevel.Warning);
+                }
+
+                if (devInfo?.StorageInfo?.NumPhysical > 0)
+                {
+                    for (uint i = 0; i < devInfo.StorageInfo.NumPhysical; i++)
+                    {
+                        lunsToScan.Add(i);
+                    }
+                }
+                else
+                {
+                    if (storageType == StorageType.Spinor)
+                    {
+                        lunsToScan.Add(0);
+                    }
+                    else
+                    {
+                        lunsToScan.AddRange([0, 1, 2, 3, 4, 5]);
+                    }
+                }
+            }
+
+            foreach (var currentLun in lunsToScan)
+            {
+                try
+                {
+                    var gptData = await ReadSectorsAsync(currentLun, 0, 64);
+                    using var stream = new MemoryStream(gptData);
+
+                    var gpt = Gpt.ReadFromStream(stream, (int)GetSectorSize(currentLun));
+                    if (gpt != null)
+                    {
+                        foreach (var p in gpt.Partitions)
+                        {
+                            var currentPartitionName = p.GetName().TrimEnd('\0');
+                            if (currentPartitionName.Equals(partitionName, StringComparison.OrdinalIgnoreCase))
+                            {
+                                return (p, currentLun);
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logging.Log($"Error scanning LUN {currentLun}: {ex.Message}", LogLevel.Debug);
+                }
+            }
+
+            return null;
+        }
+    }
+
     private bool IsQualcommEdlDevice(string devicePath, string _)
     {
         var targetVid = globalOptions.Vid ?? DefaultVid;
@@ -808,6 +1046,93 @@ internal sealed class EdlManager(GlobalOptionsBinder globalOptions) : IDisposabl
         }
     }
 
+    public async Task<byte[]> ReadSectorsAsync(uint lun, ulong startSector, uint sectorCount)
+    {
+        if (IsHostDeviceMode)
+        {
+            if (lun != 0)
+            {
+                Logging.Log("Warning: LUN parameter is ignored in host device mode.", LogLevel.Warning);
+            }
+
+            var hostManager = GetHostDeviceManager();
+            return await Task.Run(() => hostManager.ReadSectors(startSector, sectorCount));
+        }
+        else
+        {
+            await EnsureFirehoseModeAsync();
+            await ConfigureFirehoseAsync();
+
+            var storageType = globalOptions.MemoryType ?? StorageType.Ufs;
+
+            // Get storage info to determine sector size
+            Root? storageInfo = null;
+            try
+            {
+                storageInfo = await Task.Run(() => Firehose.GetStorageInfo(storageType, lun, globalOptions.Slot));
+            }
+            catch (Exception storageEx)
+            {
+                Logging.Log($"Could not get storage info for LUN {lun} (StorageType: {storageType}). Using default sector size. Error: {storageEx.Message}", LogLevel.Warning);
+            }
+
+            var sectorSize = storageInfo?.StorageInfo?.BlockSize > 0 ? (uint)storageInfo.StorageInfo.BlockSize : 0;
+            if (sectorSize == 0)
+            {
+                sectorSize = storageType switch
+                {
+                    StorageType.Nvme => 512,
+                    StorageType.Sdcc => 512,
+                    StorageType.Spinor or StorageType.Ufs or StorageType.Nand or _ => 4096,
+                };
+                Logging.Log($"Storage info unreliable or unavailable, using default sector size for {storageType}: {sectorSize}", LogLevel.Warning);
+            }
+
+            if (startSector + sectorCount - 1 > uint.MaxValue)
+            {
+                throw new ArgumentException("Sector range exceeds uint.MaxValue, which is not supported by the current Firehose.Read implementation.");
+            }
+
+            var firstLba = (uint)startSector;
+            var lastLba = (uint)(startSector + sectorCount - 1);
+
+            return await Task.Run(() => Firehose.Read(
+                storageType,
+                lun,
+                globalOptions.Slot,
+                sectorSize,
+                firstLba,
+                lastLba
+            )) ?? throw new InvalidOperationException("Failed to read data from device");
+        }
+    }
+
+    public uint GetSectorSize(uint lun = 0)
+    {
+        if (IsHostDeviceMode)
+        {
+            if (lun != 0)
+            {
+                Logging.Log("Warning: LUN parameter is ignored in host device mode.", LogLevel.Warning);
+            }
+
+            var hostManager = GetHostDeviceManager();
+            return hostManager.SectorSize;
+        }
+        else
+        {
+            // This would require Firehose connection, so we'll return a default
+            // The caller should handle getting the actual sector size from storage info
+            var storageType = globalOptions.MemoryType ?? StorageType.Ufs;
+            return storageType switch
+            {
+                StorageType.Nvme => 512,
+                StorageType.Sdcc => 512,
+                StorageType.Spinor or StorageType.Ufs or StorageType.Nand or _ => 4096,
+            };
+        }
+    }
+
     public void Dispose()
     {
         Dispose(true);
@@ -821,11 +1146,13 @@ internal sealed class EdlManager(GlobalOptionsBinder globalOptions) : IDisposabl
             if (disposing)
             {
                 _serialPort?.Dispose();
+                _hostDeviceManager?.Dispose();
             }
 
             _serialPort = null;
             _saharaClient = null;
             _firehoseClient = null;
+            _hostDeviceManager = null;
             _devicePath = null;
 
             _disposed = true;

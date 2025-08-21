@@ -17,7 +17,8 @@ internal sealed class GlobalOptionsBinder(
     Option<StorageType?> memoryOption,
     Option<LogLevel> logLevelOption,
     Option<ulong?> maxPayloadOption,
-    Option<uint> slotOption)
+    Option<uint> slotOption,
+    Option<string?> hostDevAsTargetOption)
     : BinderBase<GlobalOptionsBinder>
 {
     public string? LoaderPath { get; set; }
@@ -27,6 +28,7 @@ internal sealed class GlobalOptionsBinder(
     public LogLevel LogLevel { get; set; }
     public ulong? MaxPayloadSize { get; set; }
     public uint Slot { get; set; }
+    public string? HostDevAsTarget { get; set; }
 
     protected override GlobalOptionsBinder GetBoundValue(BindingContext bindingContext)
     {
@@ -39,7 +41,7 @@ internal sealed class GlobalOptionsBinder(
             Logging.Log(message, mappedCliLevel);
         };
 
-        return new(loaderOption, vidOption, pidOption, memoryOption, logLevelOption, maxPayloadOption, slotOption)
+        return new(loaderOption, vidOption, pidOption, memoryOption, logLevelOption, maxPayloadOption, slotOption, hostDevAsTargetOption)
         {
             LoaderPath = bindingContext.ParseResult.GetValueForOption(loaderOption)?.FullName,
             Vid = bindingContext.ParseResult.GetValueForOption(vidOption),
@@ -47,7 +49,8 @@ internal sealed class GlobalOptionsBinder(
             MemoryType = bindingContext.ParseResult.GetValueForOption(memoryOption),
             LogLevel = cliLogLevel,
             MaxPayloadSize = bindingContext.ParseResult.GetValueForOption(maxPayloadOption),
-            Slot = bindingContext.ParseResult.GetValueForOption(slotOption)
+            Slot = bindingContext.ParseResult.GetValueForOption(slotOption),
+            HostDevAsTarget = bindingContext.ParseResult.GetValueForOption(hostDevAsTargetOption)
         };
     }
 }
