@@ -14,12 +14,40 @@
         <TrimmerRemoveSymbols>true</TrimmerRemoveSymbols>
         <HttpActivityPropagationSupport>false</HttpActivityPropagationSupport>
         <XmlResolverIsNetworkingEnabledByDefault>false</XmlResolverIsNetworkingEnabledByDefault>
+        <RuntimeIdentifiers>linux-x64;linux-arm64;win-x64;win-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
         <OutputType>Exe</OutputType>
     </PropertyGroup>
     <ItemGroup>
-        <PackageReference Include="LibUsbDotNet" Version="3.0.167-alpha"/>
-        <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1"/>
-        <PackageReference Include="System.CommandLine.NamingConventionBinder" Version="2.0.0-beta4.22272.1"/>
-        <ProjectReference Include="..\QCEDL.NET\QCEDL.NET.csproj"/>
+        <PackageReference Include="LibUsbDotNet" Version="3.0.167-alpha" />
+        <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
+        <PackageReference Include="System.CommandLine.NamingConventionBinder"
+            Version="2.0.0-beta4.22272.1" />
+        <ProjectReference Include="..\QCEDL.NET\QCEDL.NET.csproj" />
     </ItemGroup>
+
+    <!-- Package metadata for Linux packages -->
+    <PropertyGroup>
+        <PackageId>edl-ng</PackageId>
+        <Title>edl-ng</Title>
+        <Authors>edl-ng developers</Authors>
+        <Description>A modern, user-friendly tool for interacting with Qualcomm devices in Emergency
+            Download (EDL) mode.</Description>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <RepositoryUrl>https://github.com/strongtz/edl-ng</RepositoryUrl>
+        <LinuxPackageUrl>https://github.com/strongtz/edl-ng</LinuxPackageUrl>
+        <CreateTarball>false</CreateTarball>
+        <IncludeAllContentForPack>true</IncludeAllContentForPack>
+        <DebPackageDescription>A modern, user-friendly tool for interacting with Qualcomm devices in
+            Emergency Download (EDL) mode.</DebPackageDescription>
+        <DebMaintainer>edl-ng developers</DebMaintainer>
+        <DebSection>utils</DebSection>
+        <DebPriority>optional</DebPriority>
+        <DebDepends>libc6</DebDepends>
+        <RpmSummary>Modern tool for Qualcomm EDL mode interaction</RpmSummary>
+        <RpmDescription>A modern, user-friendly tool for interacting with Qualcomm devices in
+            Emergency Download (EDL) mode.</RpmDescription>
+        <RpmVendor>edl-ng developers</RpmVendor>
+        <RpmGroup>Applications/System</RpmGroup>
+        <RpmLicense>MIT</RpmLicense>
+    </PropertyGroup>
 </Project>

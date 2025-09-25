@@ -145,11 +145,47 @@ jobs:
           echo "output_dir=$OUTPUT_DIR" >> $GITHUB_OUTPUT
         id: package_unix
 
+      - name: Build Linux Packages (DEB/RPM)
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          ARTIFACT_BASE_NAME: ${{ steps.build-and-publish.outputs.artifact_name_base }}
+        shell: bash
+        run: |
+          # Install dotnet packaging tools
+          dotnet tool install --global dotnet-deb --version 0.1.232
+          dotnet tool install --global dotnet-rpm --version 0.1.232
+
+          # Set version (use current date as version for now)
+          VERSION="1.0.$(date +%Y%m%d)"
+
+          # Navigate to CLI project directory
+          cd QCEDL.CLI
+
+          # Install packaging targets
+          dotnet deb install --quiet
+          dotnet rpm install --quiet
+
+          # Create DEB package (disable AOT/trimming for packaging)
+          echo "Building DEB package for ${{ matrix.arch }}..."
+          dotnet deb --runtime linux-${{ matrix.arch }} --configuration Release --version-suffix "$VERSION" -p:PublishAot=false -p:PublishTrimmed=false
+
+          # Create RPM package
+          echo "Building RPM package for ${{ matrix.arch }}..."
+          dotnet rpm --runtime linux-${{ matrix.arch }} --configuration Release --version-suffix "$VERSION" -p:PublishAot=false -p:PublishTrimmed=false
+
+          # Move packages to root and rename with architecture
+          cd ..
+          find QCEDL.CLI -name "*.deb" -exec mv {} "${ARTIFACT_BASE_NAME}.deb" \;
+          find QCEDL.CLI -name "*.rpm" -exec mv {} "${ARTIFACT_BASE_NAME}.rpm" \;
+
       - name: Upload Individual Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.build-and-publish.outputs.artifact_name_base }}
-          path: ${{ runner.os == 'Windows' && steps.package_win.outputs.output_dir || steps.package_unix.outputs.output_dir }}
+          path: |
+            ${{ runner.os == 'Windows' && steps.package_win.outputs.output_dir || steps.package_unix.outputs.output_dir }}
+            ${{ matrix.os == 'ubuntu-latest' && '*.deb' || '' }}
+            ${{ matrix.os == 'ubuntu-latest' && '*.rpm' || '' }}
           if-no-files-found: error
           retention-days: 7
 
