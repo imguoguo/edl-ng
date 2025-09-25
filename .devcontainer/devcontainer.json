@@ -1,0 +1,80 @@
+{
+    "name": "edl-ng Development Environment",
+    "dockerFile": "Dockerfile",
+
+    // Features to add to the dev container
+    "features": {
+        "ghcr.io/devcontainers/features/git:1": {},
+        "ghcr.io/devcontainers/features/github-cli:1": {}
+    },
+
+    // Use 'forwardPorts' to make a list of ports inside the container available locally
+    "forwardPorts": [],
+
+    // Configure tool-specific properties
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                // C# and .NET extensions
+                "ms-dotnettools.csharp",
+                "ms-dotnettools.csdevkit",
+                "ms-dotnettools.dotnet-interactive-vscode",
+                "ms-dotnettools.vscode-dotnet-runtime",
+
+                // Code quality and formatting
+                "EditorConfig.EditorConfig",
+                "ms-vscode.vscode-json",
+
+                // Git and GitHub integration
+                "github.vscode-pull-request-github",
+                "github.vscode-github-actions",
+
+                // General development tools
+                "ms-vscode.hexeditor",
+                "ms-vscode.vscode-json",
+                "redhat.vscode-xml",
+                "ms-vscode.powershell"
+            ],
+            "settings": {
+                // .NET specific settings
+                "dotnet.server.useOmnisharp": false,
+                "dotnet.completion.showCompletionItemsFromUnimportedNamespaces": true,
+                "dotnet.codeLens.enableReferencesCodeLens": true,
+                "dotnet.projects.enableAutomaticRestore": true,
+
+                // C# formatting settings (matches .editorconfig)
+                "csharp.format.enable": true,
+                "csharp.semanticHighlighting.enabled": true,
+
+                // Editor settings
+                "editor.formatOnSave": true,
+                "editor.codeActionsOnSave": {
+                    "source.fixAll": "explicit",
+                    "source.organizeImports": "explicit"
+                },
+
+                // File associations
+                "files.associations": {
+                    "*.slnx": "xml"
+                },
+
+                // Terminal settings
+                "terminal.integrated.defaultProfile.linux": "bash"
+            }
+        }
+    },
+
+    // Use 'postCreateCommand' to run commands after the container is created
+    "postCreateCommand": "dotnet restore && dotnet build",
+
+    // Comment out to connect as root instead. More info: https://aka.ms/vscode-remote/containers/non-root
+    "remoteUser": "vscode",
+
+    // Mount host's USB devices for hardware testing (optional)
+    "mounts": [
+        "source=/dev,target=/dev,type=bind"
+    ],
+
+    // Required for USB device access
+    "privileged": true
+}
