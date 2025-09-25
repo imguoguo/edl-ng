@@ -1,5 +1,11 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
+        <TargetFramework>net9.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+        <DebugType>None</DebugType>
+        <DebugSymbols>false</DebugSymbols>
         <AssemblyName>edl-ng</AssemblyName>
         <Product>edl-ng</Product>
         <InvariantGlobalization>true</InvariantGlobalization>
@@ -17,9 +23,10 @@
         <OutputType>Exe</OutputType>
     </PropertyGroup>
     <ItemGroup>
-        <PackageReference Include="LibUsbDotNet" Version="3.0.167-alpha"/>
-        <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1"/>
-        <PackageReference Include="System.CommandLine.NamingConventionBinder" Version="2.0.0-beta4.22272.1"/>
-        <ProjectReference Include="..\QCEDL.NET\QCEDL.NET.csproj"/>
+        <PackageReference Include="LibUsbDotNet" Version="3.0.167-alpha" />
+        <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
+        <PackageReference Include="System.CommandLine.NamingConventionBinder"
+            Version="2.0.0-beta4.22272.1" />
+        <ProjectReference Include="..\QCEDL.NET\QCEDL.NET.csproj" />
     </ItemGroup>
 </Project>
