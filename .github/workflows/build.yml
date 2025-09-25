@@ -60,6 +60,13 @@ jobs:
                                  libc6-dev-arm64-cross
         shell: bash
 
+      - name: Install dotnet packaging tools
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          dotnet tool install --global dotnet-deb
+          dotnet tool install --global dotnet-rpm
+        shell: bash
+
       - name: Build and Publish
         id: build-and-publish
         shell: bash
@@ -145,11 +152,49 @@ jobs:
           echo "output_dir=$OUTPUT_DIR" >> $GITHUB_OUTPUT
         id: package_unix
 
+      - name: Generate DEB and RPM packages (Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          RID: ${{ steps.vars.outputs.rid_os_prefix }}-${{ matrix.arch }}
+        shell: bash
+        run: |
+          echo "Generating Linux packages for runtime: $RID"
+          cd QCEDL.CLI
+
+          dotnet deb install
+          dotnet rpm install
+
+          dotnet deb --runtime $RID --configuration ${{ matrix.config }} -v
+          dotnet rpm --runtime $RID --configuration ${{ matrix.config }} -v
+
+          mkdir -p ../artifacts
+          find . -name "*.deb" -exec mv {} ../artifacts/ \;
+          find . -name "*.rpm" -exec mv {} ../artifacts/ \;
+        id: generate_packages
+
       - name: Upload Individual Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.build-and-publish.outputs.artifact_name_base }}
           path: ${{ runner.os == 'Windows' && steps.package_win.outputs.output_dir || steps.package_unix.outputs.output_dir }}
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload DEB Package
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.build-and-publish.outputs.artifact_name_base }}-deb
+          path: artifacts/*.deb
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload RPM Package
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.build-and-publish.outputs.artifact_name_base }}-rpm
+          path: artifacts/*.rpm
           if-no-files-found: error
           retention-days: 7
 

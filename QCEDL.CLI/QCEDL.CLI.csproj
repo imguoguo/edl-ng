@@ -1,5 +1,11 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
+        <TargetFramework>net9.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+        <DebugType>None</DebugType>
+        <DebugSymbols>false</DebugSymbols>
         <AssemblyName>edl-ng</AssemblyName>
         <Product>edl-ng</Product>
         <InvariantGlobalization>true</InvariantGlobalization>
