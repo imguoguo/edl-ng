@@ -1,5 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
+        <Version>1.4.1</Version>
         <TargetFramework>net9.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
@@ -8,6 +9,7 @@
         <DebugSymbols>false</DebugSymbols>
         <AssemblyName>edl-ng</AssemblyName>
         <Product>edl-ng</Product>
+        <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
         <InvariantGlobalization>true</InvariantGlobalization>
         <IlcGenerateMstatFile>true</IlcGenerateMstatFile>
         <IlcGenerateDgmlFile>true</IlcGenerateDgmlFile>

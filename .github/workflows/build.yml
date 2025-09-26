@@ -180,21 +180,14 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Upload DEB Package
+      - name: Upload DEB and RPM Packages
         if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.build-and-publish.outputs.artifact_name_base }}-deb
-          path: artifacts/*.deb
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Upload RPM Package
-        if: matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ steps.build-and-publish.outputs.artifact_name_base }}-rpm
-          path: artifacts/*.rpm
+          name: ${{ steps.build-and-publish.outputs.artifact_name_base }}-deb-rpm
+          path: |
+            artifacts/*.deb
+            artifacts/*.rpm
           if-no-files-found: error
           retention-days: 7
 

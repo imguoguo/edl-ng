@@ -40,16 +40,7 @@ jobs:
       - name: Extract deb and rpm packages
         run: |
           # Extract deb packages
-          for file in *-deb.zip; do
-            if [ -f "$file" ]; then
-              echo "Extracting $file"
-              unzip -q "$file"
-              rm "$file"
-            fi
-          done
-          
-          # Extract rpm packages
-          for file in *-rpm.zip; do
+          for file in *-deb-rpm.zip; do
             if [ -f "$file" ]; then
               echo "Extracting $file"
               unzip -q "$file"
